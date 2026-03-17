@@ -97,7 +97,30 @@ return {depth:maxDepth,type:"none"}
 }
 
 function draw(){
+// 懐中電灯の暗闇
+ctx.fillStyle = "rgba(0,0,0,0.85)"
+ctx.fillRect(0,0,canvas.width,canvas.height)
 
+// ライトの円
+ctx.globalCompositeOperation = "destination-out"
+
+let lightX = canvas.width/2
+let lightY = canvas.height/2
+
+let gradient = ctx.createRadialGradient(
+lightX, lightY, 50,
+lightX, lightY, 300
+)
+
+gradient.addColorStop(0,"rgba(0,0,0,1)")
+gradient.addColorStop(1,"rgba(0,0,0,0)")
+
+ctx.fillStyle = gradient
+ctx.beginPath()
+ctx.arc(lightX,lightY,300,0,Math.PI*2)
+ctx.fill()
+
+ctx.globalCompositeOperation = "source-over"
 ctx.fillStyle="black"
 ctx.fillRect(0,0,canvas.width,canvas.height)
 
