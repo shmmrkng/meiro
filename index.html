@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>3D Maze Explorer</title>
+
+<style>
+
+body{
+margin:0;
+overflow:hidden;
+background:black;
+font-family:sans-serif;
+color:white;
+}
+
+#ui{
+position:fixed;
+top:10px;
+left:10px;
+font-size:18px;
+}
+
+canvas{
+display:block;
+}
+
+</style>
+</head>
+<body>
+
+<div id="ui">
+WASDで移動 | ネオンゴールを探せ
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+const canvas = document.getElementById("game")
+const ctx = canvas.getContext("2d")
+
+canvas.width = window.innerWidth
+canvas.height = window.innerHeight
+
+const FOV = Math.PI/3
+const rays = 240
+const maxDepth = 20
+
+const maze = [
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,2,1],
+[1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1],
+[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,1],
+[1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
+[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,1,0,1],
+[1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1],
+[1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,1,0,1],
+[1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
+[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+]
+
+let player = {
+x:1.5,
+y:1.5,
+angle:0
+}
+
+let keys={}
+
+function castRay(angle){
+
+for(let depth=0; depth<maxDepth; depth+=0.02){
+
+let x = player.x + Math.cos(angle)*depth
+let y = player.y + Math.sin(angle)*depth
+
+let mx = Math.floor(x)
+let my = Math.floor(y)
+
+if(maze[my] && maze[my][mx] == 1){
+return {depth,type:"wall"}
+}
+
+if(maze[my] && maze[my][mx] == 2){
+return {depth,type:"goal"}
+}
+
+}
+
+return {depth:maxDepth,type:"none"}
+
+}
+
+function draw(){
+
+ctx.fillStyle="black"
+ctx.fillRect(0,0,canvas.width,canvas.height)
+
+for(let i=0;i<rays;i++){
+
+let rayAngle = player.angle - FOV/2 + FOV*(i/rays)
+
+let ray = castRay(rayAngle)
+
+let depth = ray.depth * Math.cos(rayAngle-player.angle)
+
+let wallHeight = canvas.height/(depth+0.0001)
+
+let brightness = Math.max(0,1-depth/10)
+
+if(ray.type==="goal"){
+ctx.fillStyle=`rgba(0,255,255,${brightness})`
+}else{
+ctx.fillStyle=`rgba(200,200,200,${brightness})`
+}
+
+let x = i*(canvas.width/rays)
+
+ctx.fillRect(
+x,
+canvas.height/2-wallHeight/2,
+canvas.width/rays+1,
+wallHeight
+)
+
+}
+
+}
+
+function update(){
+
+const moveSpeed = 0.05
+const rotSpeed = 0.04
+
+if(keys["a"]) player.angle -= rotSpeed
+if(keys["d"]) player.angle += rotSpeed
+
+let moveX=0
+let moveY=0
+
+if(keys["w"]){
+moveX += Math.cos(player.angle)*moveSpeed
+moveY += Math.sin(player.angle)*moveSpeed
+}
+
+if(keys["s"]){
+moveX -= Math.cos(player.angle)*moveSpeed
+moveY -= Math.sin(player.angle)*moveSpeed
+}
+
+let nx = player.x + moveX
+let ny = player.y + moveY
+
+if(maze[Math.floor(ny)][Math.floor(nx)] !== 1){
+player.x = nx
+player.y = ny
+}
+
+if(maze[Math.floor(player.y)][Math.floor(player.x)] === 2){
+alert("GOAL! 🎉")
+location.reload()
+}
+
+}
+
+function loop(){
+
+update()
+draw()
+
+requestAnimationFrame(loop)
+
+}
+
+window.addEventListener("keydown",e=>{
+keys[e.key.toLowerCase()] = true
+})
+
+window.addEventListener("keyup",e=>{
+keys[e.key.toLowerCase()] = false
+})
+
+loop()
+
+</script>
+</body>
+</html>
