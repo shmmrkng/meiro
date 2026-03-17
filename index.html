@@ -121,6 +121,33 @@ ctx.arc(lightX,lightY,300,0,Math.PI*2)
 ctx.fill()
 
 ctx.globalCompositeOperation = "source-over"
+
+// 画面を暗くする
+ctx.fillStyle = "rgba(0,0,0,0.92)"
+ctx.fillRect(0,0,canvas.width,canvas.height)
+
+// ライト（主人公と一緒に動く）
+ctx.globalCompositeOperation = "destination-out"
+
+let cx = canvas.width/2
+let cy = canvas.height/2
+
+let gradient = ctx.createRadialGradient(
+cx,cy,40,
+cx,cy,450
+)
+
+gradient.addColorStop(0,"rgba(0,0,0,1)")
+gradient.addColorStop(0.3,"rgba(0,0,0,0.8)")
+gradient.addColorStop(1,"rgba(0,0,0,0)")
+
+ctx.fillStyle = gradient
+ctx.beginPath()
+ctx.arc(cx,cy,450,0,Math.PI*2)
+ctx.fill()
+
+ctx.globalCompositeOperation = "source-over"
+
 ctx.fillStyle="black"
 ctx.fillRect(0,0,canvas.width,canvas.height)
 
