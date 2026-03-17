@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>3D Maze Explorer</title>
+<title>Dark Maze Explorer</title>
 
 <style>
 
@@ -10,15 +10,16 @@ body{
 margin:0;
 overflow:hidden;
 background:black;
-font-family:sans-serif;
 color:white;
+font-family:sans-serif;
 }
 
 #ui{
 position:fixed;
 top:10px;
 left:10px;
-font-size:18px;
+font-size:16px;
+opacity:0.8;
 }
 
 canvas{
@@ -30,7 +31,7 @@ display:block;
 <body>
 
 <div id="ui">
-WASDで移動 | ネオンゴールを探せ
+W/S 移動　A/D 回転　🔦ライトで迷路を探索
 </div>
 
 <canvas id="game"></canvas>
@@ -44,21 +45,23 @@ canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
 const FOV = Math.PI/3
-const rays = 240
-const maxDepth = 20
+const rays = 300
+const maxDepth = 25
 
 const maze = [
+
 [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,2,1],
+[1,0,0,3,0,0,1,0,0,0,0,0,1,0,3,0,0,0,2,1],
 [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1],
-[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,1],
+[1,0,0,0,1,0,0,3,1,0,0,0,1,0,0,0,1,0,0,1],
 [1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
-[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,1,0,1],
+[1,0,0,0,0,0,1,0,0,0,1,0,3,0,0,0,0,1,0,1],
 [1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1],
-[1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,1,0,1],
+[1,0,1,0,0,0,0,0,1,0,1,0,1,0,3,0,0,1,0,1],
 [1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
-[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,1],
+[1,0,0,0,0,3,1,0,0,0,1,0,0,0,0,0,0,3,0,1],
 [1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+
 ]
 
 let player = {
@@ -79,13 +82,13 @@ let y = player.y + Math.sin(angle)*depth
 let mx = Math.floor(x)
 let my = Math.floor(y)
 
-if(maze[my] && maze[my][mx] == 1){
-return {depth,type:"wall"}
-}
+if(!maze[my]) continue
 
-if(maze[my] && maze[my][mx] == 2){
-return {depth,type:"goal"}
-}
+let cell = maze[my][mx]
+
+if(cell === 1) return {depth,type:"wall"}
+if(cell === 2) return {depth,type:"goal"}
+if(cell === 3) return {depth,type:"mark"}
 
 }
 
@@ -104,25 +107,35 @@ let rayAngle = player.angle - FOV/2 + FOV*(i/rays)
 
 let ray = castRay(rayAngle)
 
-let depth = ray.depth * Math.cos(rayAngle-player.angle)
+let depth = ray.depth*Math.cos(rayAngle-player.angle)
 
-let wallHeight = canvas.height/(depth+0.0001)
+let height = canvas.height/(depth+0.0001)
 
-let brightness = Math.max(0,1-depth/10)
+let light = Math.max(0,1-depth/10)
 
-if(ray.type==="goal"){
-ctx.fillStyle=`rgba(0,255,255,${brightness})`
-}else{
-ctx.fillStyle=`rgba(200,200,200,${brightness})`
+let center = rays/2
+let cone = 1-Math.abs(i-center)/center
+light *= cone
+
+if(ray.type==="wall"){
+ctx.fillStyle=`rgba(40,40,40,${light})`
 }
 
-let x = i*(canvas.width/rays)
+if(ray.type==="mark"){
+ctx.fillStyle=`rgba(0,255,100,${light})`
+}
+
+if(ray.type==="goal"){
+ctx.fillStyle=`rgba(0,255,255,${light})`
+}
+
+let x=i*(canvas.width/rays)
 
 ctx.fillRect(
 x,
-canvas.height/2-wallHeight/2,
+canvas.height/2-height/2,
 canvas.width/rays+1,
-wallHeight
+height
 )
 
 }
@@ -131,34 +144,34 @@ wallHeight
 
 function update(){
 
-const moveSpeed = 0.05
-const rotSpeed = 0.04
+const move=0.06
+const rot=0.04
 
-if(keys["a"]) player.angle -= rotSpeed
-if(keys["d"]) player.angle += rotSpeed
+if(keys["a"]) player.angle-=rot
+if(keys["d"]) player.angle+=rot
 
-let moveX=0
-let moveY=0
+let dx=0
+let dy=0
 
 if(keys["w"]){
-moveX += Math.cos(player.angle)*moveSpeed
-moveY += Math.sin(player.angle)*moveSpeed
+dx+=Math.cos(player.angle)*move
+dy+=Math.sin(player.angle)*move
 }
 
 if(keys["s"]){
-moveX -= Math.cos(player.angle)*moveSpeed
-moveY -= Math.sin(player.angle)*moveSpeed
+dx-=Math.cos(player.angle)*move
+dy-=Math.sin(player.angle)*move
 }
 
-let nx = player.x + moveX
-let ny = player.y + moveY
+let nx=player.x+dx
+let ny=player.y+dy
 
-if(maze[Math.floor(ny)][Math.floor(nx)] !== 1){
-player.x = nx
-player.y = ny
+if(maze[Math.floor(ny)][Math.floor(nx)]!==1){
+player.x=nx
+player.y=ny
 }
 
-if(maze[Math.floor(player.y)][Math.floor(player.x)] === 2){
+if(maze[Math.floor(player.y)][Math.floor(player.x)]===2){
 alert("GOAL! 🎉")
 location.reload()
 }
@@ -175,11 +188,11 @@ requestAnimationFrame(loop)
 }
 
 window.addEventListener("keydown",e=>{
-keys[e.key.toLowerCase()] = true
+keys[e.key.toLowerCase()]=true
 })
 
 window.addEventListener("keyup",e=>{
-keys[e.key.toLowerCase()] = false
+keys[e.key.toLowerCase()]=false
 })
 
 loop()
