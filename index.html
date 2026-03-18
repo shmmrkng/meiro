@@ -1,193 +1,181 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>Maze FPS</title>
-<style>
-body{margin:0;overflow:hidden;background:black;color:white;font-family:sans-serif;}
-#ui{position:fixed;top:10px;left:10px;}
-canvas{display:block;}
-</style>
+    <meta charset="UTF-8">
+    <title>3D Maze Escape</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            border: 2px solid #555;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            pointer-events: none;
+        }
+        .msg {
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px #000;
+        }
+    </style>
 </head>
 <body>
 
-<div id="ui">Score: <span id="score">0</span></div>
-<canvas id="game"></canvas>
+<div id="ui">
+    <div id="status" class="msg">出口を探せ！</div>
+    <div style="font-size: 14px;">[WASD] または [矢印キー] で移動</div>
+</div>
+<canvas id="gameCanvas"></canvas>
 
 <script>
-const canvas = document.getElementById("game")
-const ctx = canvas.getContext("2d")
-canvas.width = innerWidth
-canvas.height = innerHeight
+/**
+ * 定数・設定
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const screenWidth = 640;
+const screenHeight = 480;
 
-const FOV = Math.PI/3
-const rays = 200
-const maxDepth = 20
+canvas.width = screenWidth;
+canvas.height = screenHeight;
 
-const maze = [
-[1,1,1,1,1,1,1,1,1,1],
-[1,0,0,0,0,0,0,0,2,1],
-[1,0,1,1,1,0,1,0,1,1],
-[1,0,0,0,1,0,1,0,0,1],
-[1,1,1,0,1,0,1,1,0,1],
-[1,0,0,0,0,0,0,1,0,1],
-[1,0,1,1,1,1,0,1,0,1],
-[1,0,0,0,0,0,0,0,0,1],
-[1,1,1,1,1,1,1,1,1,1]
-]
+// 迷路データ (1: 壁, 0: 通路, 2: ゴール)
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,1,0,0,0,0,0,1],
+    [1,0,1,1,0,1,0,1,1,1,0,1],
+    [1,0,0,1,0,0,0,1,0,0,0,1],
+    [1,1,0,1,1,1,1,1,0,1,1,1],
+    [1,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,1,1,0,1],
+    [1,0,1,0,0,0,0,0,0,1,0,1],
+    [1,0,1,0,1,1,1,1,0,1,0,1],
+    [1,0,0,0,1,2,0,0,0,1,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1],
+];
 
-let player = {x:1.5,y:1.5,angle:0}
-let keys={}
-let bullets=[]
-let enemies=[]
-let score=0
-let spawnTimer=0
+const mapSize = 12;
 
-class Enemy{
-constructor(){
-this.x=7+Math.random()*1
-this.y=7+Math.random()*1
-this.alive=true
-}
-update(){
-let dx=player.x-this.x
-let dy=player.y-this.y
-let dist=Math.hypot(dx,dy)
+// プレイヤーの状態
+let player = {
+    x: 1.5,
+    y: 1.5,
+    dir: 0,    // 向き（ラジアン）
+    speed: 0,
+    rotSpeed: 0
+};
 
-this.x+=dx/dist*0.01
-this.y+=dy/dist*0.01
+// 入力検知
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
 
-if(dist<0.5){
-alert("Game Over")
-location.reload()
-}
-}
-}
+/**
+ * ゲームループ
+ */
+function update() {
+    // 回転
+    if (keys['ArrowLeft'] || keys['a']) player.dir -= 0.05;
+    if (keys['ArrowRight'] || keys['d']) player.dir += 0.05;
 
-function castRay(angle){
-for(let d=0;d<maxDepth;d+=0.02){
-let x=player.x+Math.cos(angle)*d
-let y=player.y+Math.sin(angle)*d
-let m=maze[Math.floor(y)][Math.floor(x)]
-if(m==1) return {d,type:"wall"}
-if(m==2) return {d,type:"goal"}
-}
-return {d:maxDepth,type:"none"}
-}
+    // 前後移動
+    let moveStep = 0;
+    if (keys['ArrowUp'] || keys['w']) moveStep = 0.06;
+    if (keys['ArrowDown'] || keys['s']) moveStep = -0.06;
 
-function draw3D(){
-for(let i=0;i<rays;i++){
-let a=player.angle-FOV/2+FOV*(i/rays)
-let ray=castRay(a)
-let d=ray.d*Math.cos(a-player.angle)
-let h=canvas.height/(d+0.01)
+    let newX = player.x + Math.cos(player.dir) * moveStep;
+    let newY = player.y + Math.sin(player.dir) * moveStep;
 
-let light = Math.max(0.2,1-d/10)
+    // 当たり判定 (壁でなければ移動)
+    if (map[Math.floor(newY)][Math.floor(newX)] !== 1) {
+        player.x = newX;
+        player.y = newY;
+    }
 
-if(ray.type=="goal") ctx.fillStyle=`rgba(0,255,255,${light})`
-else ctx.fillStyle=`rgba(180,180,180,${light})`
-
-ctx.fillRect(
-i*(canvas.width/rays),
-canvas.height/2-h/2,
-canvas.width/rays+1,
-h
-)
-}
+    // ゴール判定
+    if (map[Math.floor(player.y)][Math.floor(player.x)] === 2) {
+        document.getElementById('status').innerText = "脱出成功！🎉";
+        document.getElementById('status').style.color = "#ffff00";
+    }
 }
 
-function drawEnemies(){
-enemies.forEach(e=>{
-let dx=e.x-player.x
-let dy=e.y-player.y
-let angle=Math.atan2(dy,dx)-player.angle
+function draw() {
+    // 背景描画 (空と床)
+    ctx.fillStyle = "#222"; // 天井
+    ctx.fillRect(0, 0, screenWidth, screenHeight / 2);
+    ctx.fillStyle = "#444"; // 床
+    ctx.fillRect(0, screenHeight / 2, screenWidth, screenHeight / 2);
 
-let dist=Math.hypot(dx,dy)
-if(Math.abs(angle)<FOV/2){
-let size=200/dist
-let x=(angle/FOV+0.5)*canvas.width
+    // レイキャスティング
+    const fov = Math.PI / 3; // 視野角 60度
+    const numRays = screenWidth;
+    const stepAngle = fov / numRays;
 
-ctx.fillStyle="red"
-ctx.fillRect(x-size/2,canvas.height/2-size/2,size,size)
-}
-})
-}
+    for (let i = 0; i < numRays; i++) {
+        let rayAngle = (player.dir - fov / 2) + i * stepAngle;
+        
+        let distanceToWall = 0;
+        let hitWall = false;
+        let wallType = 0;
 
-function shoot(){
-let hit=false
-enemies.forEach(e=>{
-let dx=e.x-player.x
-let dy=e.y-player.y
-let angle=Math.atan2(dy,dx)-player.angle
-let dist=Math.hypot(dx,dy)
+        let eyeX = Math.cos(rayAngle);
+        let eyeY = Math.sin(rayAngle);
 
-if(Math.abs(angle)<0.1 && dist<5){
-e.alive=false
-score++
-document.getElementById("score").textContent=score
-hit=true
-}
-})
-enemies=enemies.filter(e=>e.alive)
-}
+        while (!hitWall && distanceToWall < 15) {
+            distanceToWall += 0.05;
+            let testX = Math.floor(player.x + eyeX * distanceToWall);
+            let testY = Math.floor(player.y + eyeY * distanceToWall);
 
-function update(){
-if(keys["a"]) player.angle-=0.04
-if(keys["d"]) player.angle+=0.04
+            if (testX < 0 || testX >= mapSize || testY < 0 || testY >= map[0].length) {
+                hitWall = true;
+                distanceToWall = 15;
+            } else {
+                if (map[testY][testX] > 0) {
+                    hitWall = true;
+                    wallType = map[testY][testX];
+                }
+            }
+        }
 
-let move=0.05
-let nx=player.x
-let ny=player.y
+        // 魚眼レンズ効果の補正
+        let correctedDist = distanceToWall * Math.cos(rayAngle - player.dir);
+        let ceiling = (screenHeight / 2.0) - screenHeight / correctedDist;
+        let floor = screenHeight - ceiling;
+        let wallHeight = floor - ceiling;
 
-if(keys["w"]){
-nx+=Math.cos(player.angle)*move
-ny+=Math.sin(player.angle)*move
-}
-if(keys["s"]){
-nx-=Math.cos(player.angle)*move
-ny-=Math.sin(player.angle)*move
-}
-
-if(maze[Math.floor(ny)][Math.floor(nx)]!=1){
-player.x=nx
-player.y=ny
-}
-
-if(maze[Math.floor(player.y)][Math.floor(player.x)]==2){
-alert("GOAL!")
-location.reload()
+        // 壁の色決定
+        let color = 255 - (distanceToWall * 15); // 遠くほど暗く
+        if (wallType === 1) {
+            ctx.fillStyle = `rgb(0, ${color}, ${color * 0.5})`; // 壁の色
+        } else if (wallType === 2) {
+            ctx.fillStyle = `rgb(${color}, ${color}, 0)`; // ゴールの色
+        }
+        
+        ctx.fillRect(i, ceiling, 1, wallHeight);
+    }
 }
 
-spawnTimer++
-if(spawnTimer>120){
-spawnTimer=0
-if(enemies.length<5) enemies.push(new Enemy())
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
 }
 
-enemies.forEach(e=>e.update())
-}
-
-function loop(){
-ctx.fillStyle="black"
-ctx.fillRect(0,0,canvas.width,canvas.height)
-
-update()
-draw3D()
-drawEnemies()
-
-requestAnimationFrame(loop)
-}
-
-window.addEventListener("keydown",e=>{
-keys[e.key.toLowerCase()]=true
-if(e.code==="Space") shoot()
-})
-window.addEventListener("keyup",e=>{
-keys[e.key.toLowerCase()]=false
-})
-
-loop()
+gameLoop();
 </script>
-
 </body>
 </html>
