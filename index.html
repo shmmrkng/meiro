@@ -2,251 +2,192 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Dark Maze Explorer</title>
-
+<title>Maze FPS</title>
 <style>
-
-body{
-margin:0;
-overflow:hidden;
-background:black;
-color:white;
-font-family:sans-serif;
-}
-
-#ui{
-position:fixed;
-top:10px;
-left:10px;
-font-size:16px;
-opacity:0.8;
-}
-
-canvas{
-display:block;
-}
-
+body{margin:0;overflow:hidden;background:black;color:white;font-family:sans-serif;}
+#ui{position:fixed;top:10px;left:10px;}
+canvas{display:block;}
 </style>
 </head>
 <body>
 
-<div id="ui">
-W/S 移動　A/D 回転　🔦ライトで迷路を探索
-</div>
-
+<div id="ui">Score: <span id="score">0</span></div>
 <canvas id="game"></canvas>
 
 <script>
-
 const canvas = document.getElementById("game")
 const ctx = canvas.getContext("2d")
-
-canvas.width = window.innerWidth
-canvas.height = window.innerHeight
+canvas.width = innerWidth
+canvas.height = innerHeight
 
 const FOV = Math.PI/3
-const rays = 300
-const maxDepth = 25
+const rays = 200
+const maxDepth = 20
 
 const maze = [
-
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-[1,0,0,3,0,0,1,0,0,0,0,0,1,0,3,0,0,0,2,1],
-[1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1],
-[1,0,0,0,1,0,0,3,1,0,0,0,1,0,0,0,1,0,0,1],
-[1,1,1,0,1,1,1,0,1,0,1,1,1,1,1,0,1,1,0,1],
-[1,0,0,0,0,0,1,0,0,0,1,0,3,0,0,0,0,1,0,1],
-[1,0,1,1,1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1],
-[1,0,1,0,0,0,0,0,1,0,1,0,1,0,3,0,0,1,0,1],
-[1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
-[1,0,0,0,0,3,1,0,0,0,1,0,0,0,0,0,0,3,0,1],
-[1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-
+[1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,0,0,2,1],
+[1,0,1,1,1,0,1,0,1,1],
+[1,0,0,0,1,0,1,0,0,1],
+[1,1,1,0,1,0,1,1,0,1],
+[1,0,0,0,0,0,0,1,0,1],
+[1,0,1,1,1,1,0,1,0,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1]
 ]
 
-let player = {
-x:1.5,
-y:1.5,
-angle:0
-}
-
+let player = {x:1.5,y:1.5,angle:0}
 let keys={}
+let bullets=[]
+let enemies=[]
+let score=0
+let spawnTimer=0
+
+class Enemy{
+constructor(){
+this.x=7+Math.random()*1
+this.y=7+Math.random()*1
+this.alive=true
+}
+update(){
+let dx=player.x-this.x
+let dy=player.y-this.y
+let dist=Math.hypot(dx,dy)
+
+this.x+=dx/dist*0.01
+this.y+=dy/dist*0.01
+
+if(dist<0.5){
+alert("Game Over")
+location.reload()
+}
+}
+}
 
 function castRay(angle){
-
-for(let depth=0; depth<maxDepth; depth+=0.02){
-
-let x = player.x + Math.cos(angle)*depth
-let y = player.y + Math.sin(angle)*depth
-
-let mx = Math.floor(x)
-let my = Math.floor(y)
-
-if(!maze[my]) continue
-
-let cell = maze[my][mx]
-
-if(cell === 1) return {depth,type:"wall"}
-if(cell === 2) return {depth,type:"goal"}
-if(cell === 3) return {depth,type:"mark"}
-
+for(let d=0;d<maxDepth;d+=0.02){
+let x=player.x+Math.cos(angle)*d
+let y=player.y+Math.sin(angle)*d
+let m=maze[Math.floor(y)][Math.floor(x)]
+if(m==1) return {d,type:"wall"}
+if(m==2) return {d,type:"goal"}
+}
+return {d:maxDepth,type:"none"}
 }
 
-return {depth:maxDepth,type:"none"}
-
-}
-
-function draw(){
-// 懐中電灯の暗闇
-ctx.fillStyle = "rgba(0,0,0,0.85)"
-ctx.fillRect(0,0,canvas.width,canvas.height)
-
-// ライトの円
-ctx.globalCompositeOperation = "destination-out"
-
-let lightX = canvas.width/2
-let lightY = canvas.height/2
-
-let gradient = ctx.createRadialGradient(
-lightX, lightY, 50,
-lightX, lightY, 300
-)
-
-gradient.addColorStop(0,"rgba(0,0,0,1)")
-gradient.addColorStop(1,"rgba(0,0,0,0)")
-
-ctx.fillStyle = gradient
-ctx.beginPath()
-ctx.arc(lightX,lightY,300,0,Math.PI*2)
-ctx.fill()
-
-ctx.globalCompositeOperation = "source-over"
-
-// 画面を暗くする
-ctx.fillStyle = "rgba(0,0,0,0.92)"
-ctx.fillRect(0,0,canvas.width,canvas.height)
-
-// ライト（主人公と一緒に動く）
-ctx.globalCompositeOperation = "destination-out"
-
-let cx = canvas.width/2
-let cy = canvas.height/2
-
-let gradient = ctx.createRadialGradient(
-cx,cy,40,
-cx,cy,450
-)
-
-gradient.addColorStop(0,"rgba(0,0,0,1)")
-gradient.addColorStop(0.3,"rgba(0,0,0,0.8)")
-gradient.addColorStop(1,"rgba(0,0,0,0)")
-
-ctx.fillStyle = gradient
-ctx.beginPath()
-ctx.arc(cx,cy,450,0,Math.PI*2)
-ctx.fill()
-
-ctx.globalCompositeOperation = "source-over"
-
-ctx.fillStyle="black"
-ctx.fillRect(0,0,canvas.width,canvas.height)
-
+function draw3D(){
 for(let i=0;i<rays;i++){
+let a=player.angle-FOV/2+FOV*(i/rays)
+let ray=castRay(a)
+let d=ray.d*Math.cos(a-player.angle)
+let h=canvas.height/(d+0.01)
 
-let rayAngle = player.angle - FOV/2 + FOV*(i/rays)
+let light = Math.max(0.2,1-d/10)
 
-let ray = castRay(rayAngle)
-
-let depth = ray.depth*Math.cos(rayAngle-player.angle)
-
-let height = canvas.height/(depth+0.0001)
-
-let light = Math.max(0,1-depth/10)
-
-let center = rays/2
-let cone = 1-Math.abs(i-center)/center
-light *= cone
-
-if(ray.type==="wall"){
-ctx.fillStyle=`rgba(40,40,40,${light})`
-}
-
-if(ray.type==="mark"){
-ctx.fillStyle=`rgba(0,255,100,${light})`
-}
-
-if(ray.type==="goal"){
-ctx.fillStyle=`rgba(0,255,255,${light})`
-}
-
-let x=i*(canvas.width/rays)
+if(ray.type=="goal") ctx.fillStyle=`rgba(0,255,255,${light})`
+else ctx.fillStyle=`rgba(180,180,180,${light})`
 
 ctx.fillRect(
-x,
-canvas.height/2-height/2,
+i*(canvas.width/rays),
+canvas.height/2-h/2,
 canvas.width/rays+1,
-height
+h
 )
-
+}
 }
 
+function drawEnemies(){
+enemies.forEach(e=>{
+let dx=e.x-player.x
+let dy=e.y-player.y
+let angle=Math.atan2(dy,dx)-player.angle
+
+let dist=Math.hypot(dx,dy)
+if(Math.abs(angle)<FOV/2){
+let size=200/dist
+let x=(angle/FOV+0.5)*canvas.width
+
+ctx.fillStyle="red"
+ctx.fillRect(x-size/2,canvas.height/2-size/2,size,size)
+}
+})
+}
+
+function shoot(){
+let hit=false
+enemies.forEach(e=>{
+let dx=e.x-player.x
+let dy=e.y-player.y
+let angle=Math.atan2(dy,dx)-player.angle
+let dist=Math.hypot(dx,dy)
+
+if(Math.abs(angle)<0.1 && dist<5){
+e.alive=false
+score++
+document.getElementById("score").textContent=score
+hit=true
+}
+})
+enemies=enemies.filter(e=>e.alive)
 }
 
 function update(){
+if(keys["a"]) player.angle-=0.04
+if(keys["d"]) player.angle+=0.04
 
-const move=0.06
-const rot=0.04
-
-if(keys["a"]) player.angle-=rot
-if(keys["d"]) player.angle+=rot
-
-let dx=0
-let dy=0
+let move=0.05
+let nx=player.x
+let ny=player.y
 
 if(keys["w"]){
-dx+=Math.cos(player.angle)*move
-dy+=Math.sin(player.angle)*move
+nx+=Math.cos(player.angle)*move
+ny+=Math.sin(player.angle)*move
 }
-
 if(keys["s"]){
-dx-=Math.cos(player.angle)*move
-dy-=Math.sin(player.angle)*move
+nx-=Math.cos(player.angle)*move
+ny-=Math.sin(player.angle)*move
 }
 
-let nx=player.x+dx
-let ny=player.y+dy
-
-if(maze[Math.floor(ny)][Math.floor(nx)]!==1){
+if(maze[Math.floor(ny)][Math.floor(nx)]!=1){
 player.x=nx
 player.y=ny
 }
 
-if(maze[Math.floor(player.y)][Math.floor(player.x)]===2){
-alert("GOAL! 🎉")
+if(maze[Math.floor(player.y)][Math.floor(player.x)]==2){
+alert("GOAL!")
 location.reload()
 }
 
+spawnTimer++
+if(spawnTimer>120){
+spawnTimer=0
+if(enemies.length<5) enemies.push(new Enemy())
+}
+
+enemies.forEach(e=>e.update())
 }
 
 function loop(){
+ctx.fillStyle="black"
+ctx.fillRect(0,0,canvas.width,canvas.height)
 
 update()
-draw()
+draw3D()
+drawEnemies()
 
 requestAnimationFrame(loop)
-
 }
 
 window.addEventListener("keydown",e=>{
 keys[e.key.toLowerCase()]=true
+if(e.code==="Space") shoot()
 })
-
 window.addEventListener("keyup",e=>{
 keys[e.key.toLowerCase()]=false
 })
 
 loop()
-
 </script>
+
 </body>
 </html>
